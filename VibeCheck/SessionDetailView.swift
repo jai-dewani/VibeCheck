@@ -25,9 +25,6 @@ class SessionDetailViewModel: ObservableObject {
     @Published var timeYellow: Double = 0.0
     @Published var timeRed: Double = 0.0
     
-    @Published var dominantFrequency: Double = 0.0
-    @Published var estimatedRPM: Double = 0.0
-    
     func loadData(fileURL: URL, sessionDuration: TimeInterval) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let content = try? String(contentsOf: fileURL) else {
@@ -87,11 +84,6 @@ class SessionDetailViewModel: ObservableObject {
                 }
             }
             
-            // FFT calculation for dominant frequency
-            let sampleRate = 100.0 // 100 Hz
-            let freq = self.calculateDominantFrequency(magnitudes: allMagnitudes, sampleRate: sampleRate)
-            let rpm = freq * 60.0
-            
             DispatchQueue.main.async {
                 self.peakX = pX
                 self.peakY = pY
@@ -104,44 +96,10 @@ class SessionDetailViewModel: ObservableObject {
                     self.timeRed = (Double(tR) / total) * 100.0
                 }
                 
-                self.dominantFrequency = freq
-                self.estimatedRPM = rpm
                 self.chartData = downsampled
                 self.isLoading = false
             }
         }
-    }
-    
-    private func calculateDominantFrequency(magnitudes: [Double], sampleRate: Double) -> Double {
-        let n = magnitudes.count
-        guard n > 0 else { return 0.0 }
-        
-        let log2n = vDSP_Length(log2(Float(n)))
-        let powerOfTwoCount = Int(1 << log2n)
-        
-        let truncated = magnitudes.prefix(powerOfTwoCount).map { Float($0) }
-        guard let fftSetup = vDSP_create_fftsetup(log2n, FFTRadix(kFFTRadix2)) else { return 0.0 }
-        
-        var real = [Float](truncated)
-        var imag = [Float](repeating: 0.0, count: powerOfTwoCount)
-        
-        var splitComplex = DSPSplitComplex(realp: &real, imagp: &imag)
-        vDSP_fft_zip(fftSetup, &splitComplex, 1, log2n, FFTDirection(FFT_FORWARD))
-        
-        var magnitudesOut = [Float](repeating: 0.0, count: powerOfTwoCount / 2)
-        vDSP_zvmags(&splitComplex, 1, &magnitudesOut, 1, vDSP_Length(powerOfTwoCount / 2))
-        
-        vDSP_destroy_fftsetup(fftSetup)
-        
-        // Ignore DC offset (0 Hz) by setting it to 0
-        magnitudesOut[0] = 0.0
-        
-        var maxMag: Float = 0.0
-        var maxIndex: vDSP_Length = 0
-        vDSP_maxvi(&magnitudesOut, 1, &maxMag, &maxIndex, vDSP_Length(powerOfTwoCount / 2))
-        
-        let freq = Double(maxIndex) * sampleRate / Double(powerOfTwoCount)
-        return freq
     }
 }
 
@@ -171,35 +129,6 @@ struct SessionDetailView: View {
                         MiniMetric(title: "Peak Y", value: viewModel.peakY)
                         MiniMetric(title: "Peak Z", value: viewModel.peakZ)
                     }.padding(.horizontal)
-                    
-                    // 2. ENGINE HARMONICS
-                    VStack(alignment: .leading) {
-                        Text("Engine Harmonics Estimate")
-                            .font(.headline)
-                        HStack {
-                            VStack(alignment: .leading) {
-                                Text("\(viewModel.dominantFrequency, specifier: "%.1f") Hz")
-                                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                                    .foregroundColor(.blue)
-                                Text("Dominant Frequency")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                            Spacer()
-                            VStack(alignment: .trailing) {
-                                Text("\(viewModel.estimatedRPM, specifier: "%.0f") RPM")
-                                    .font(.system(size: 28, weight: .bold, design: .rounded))
-                                    .foregroundColor(.purple)
-                                Text("Est. Engine RPM")
-                                    .font(.caption)
-                                    .foregroundColor(.secondary)
-                            }
-                        }
-                    }
-                    .padding()
-                    .background(Color(.secondarySystemBackground))
-                    .cornerRadius(15)
-                    .padding(.horizontal)
                     
                     // 3. SEVERITY BREAKDOWN
                     VStack(alignment: .leading) {
