@@ -1,3 +1,3 @@
-This is my second Entire checkpoint.
+This is my third Entire checkpoint.
 
-It marks another simple step forward in tracking progress in this workspace.
+It marks continued progress in tracking checkpoints in this workspace.
