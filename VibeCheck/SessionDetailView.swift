@@ -7,6 +7,7 @@ import Accelerate
 struct ChartDataPoint: Identifiable {
     let id = UUID()
     let time: Double
+    let date: Date
     let magnitude: Double
     let x: Double
     let y: Double
@@ -25,7 +26,7 @@ class SessionDetailViewModel: ObservableObject {
     @Published var timeYellow: Double = 0.0
     @Published var timeRed: Double = 0.0
     
-    func loadData(fileURL: URL, sessionDuration: TimeInterval) {
+    func loadData(fileURL: URL, sessionDuration: TimeInterval, startTime: Date) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let content = try? String(contentsOf: fileURL) else {
                 DispatchQueue.main.async { self.isLoading = false }
@@ -78,7 +79,8 @@ class SessionDetailViewModel: ObservableObject {
                     bucketCount += 1
                     
                     if bucketCount >= downsampleFactor {
-                        downsampled.append(ChartDataPoint(time: currentBucketTime, magnitude: currentBucketMag, x: currentBucketX, y: currentBucketY, z: currentBucketZ))
+                        let pointDate = startTime.addingTimeInterval(currentBucketTime)
+                        downsampled.append(ChartDataPoint(time: currentBucketTime, date: pointDate, magnitude: currentBucketMag, x: currentBucketX, y: currentBucketY, z: currentBucketZ))
                         currentBucketMag = 0; currentBucketX = 0; currentBucketY = 0; currentBucketZ = 0; bucketCount = 0
                     }
                 }
@@ -179,12 +181,14 @@ struct SessionDetailView: View {
                         
                         Chart(viewModel.chartData) { point in
                             LineMark(
-                                x: .value("Time (s)", point.time),
+                                x: .value("Time", point.date),
                                 y: .value("G-Force", valueForMode(point))
                             )
                             .foregroundStyle(colorForMode())
                             .interpolationMethod(.catmullRom)
                         }
+                        .chartScrollableAxes(.horizontal)
+                        .chartXVisibleDomain(length: 15.0)
                         .frame(height: 250)
                     }
                     .padding()
@@ -199,7 +203,7 @@ struct SessionDetailView: View {
         .navigationTitle("Session Details")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            viewModel.loadData(fileURL: fileURL, sessionDuration: session.duration)
+            viewModel.loadData(fileURL: fileURL, sessionDuration: session.duration, startTime: session.startTime)
         }
     }
     
