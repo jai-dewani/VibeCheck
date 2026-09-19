@@ -24,6 +24,31 @@
   "session_metrics": {
     "turn_count": 1
   },
+  "summary": {
+    "intent": "The user wanted to create and then update a markdown checkpoint note recording their Entire checkpoint progress, ending with the third checkpoint.",
+    "outcome": "A new file named hello-entire.md was created and updated twice so it now marks the user's third Entire checkpoint.",
+    "learnings": {
+      "repo": [
+        "The workspace/repo root used in the session was /Users/jaikumardewani/Projects/VibeCheck.",
+        "hello-entire.md did not already exist before the first creation."
+      ],
+      "code": [
+        {
+          "path": "hello-entire.md",
+          "line": 1,
+          "end_line": 1,
+          "finding": "The file contains a short note whose checkpoint count was updated from first to second to third."
+        }
+      ],
+      "workflow": [
+        "The assistant checked for an existing file with rg before creating it.",
+        "The assistant inspected the existing file with sed before each update.",
+        "Edits were made with apply_patch, keeping the change narrowly scoped."
+      ]
+    },
+    "friction": [],
+    "open_items": []
+  },
   "initial_attribution": {
     "calculated_at": "2026-09-15T16:24:06.790967Z",
     "agent_lines": 2,
