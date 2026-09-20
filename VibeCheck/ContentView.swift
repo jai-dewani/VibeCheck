@@ -27,26 +27,35 @@ struct ContentView: View {
                 
                 // Live Readout
                 VStack(spacing: 8) {
-                    Text("LIVE ACCELERATION")
+                    Text("LIVE G-FORCE")
                         .font(.caption)
                         .foregroundColor(.secondary)
                     if let sample = motionManager.currentSample {
+                        Text("\(sample.magnitude, specifier: "%.2f")g")
+                            .font(.system(size: 64, weight: .black, design: .rounded))
+                            .foregroundColor(colorForG(sample.magnitude))
+                        
                         HStack(spacing: 15) {
                             Text("X: \(sample.x, specifier: "%.2f")")
                             Text("Y: \(sample.y, specifier: "%.2f")")
                             Text("Z: \(sample.z, specifier: "%.2f")")
-                            Text("|M|: \(sample.magnitude, specifier: "%.2f")")
-                                .bold()
                         }
-                        .font(.system(.body, design: .monospaced))
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundColor(.secondary)
                     } else {
+                        Text("0.00g")
+                            .font(.system(size: 64, weight: .black, design: .rounded))
+                            .foregroundColor(.secondary.opacity(0.3))
                         Text("Waiting for data...")
+                            .font(.caption)
                             .foregroundColor(.secondary)
                     }
                 }
                 .padding()
+                .frame(maxWidth: .infinity)
                 .background(Color(.secondarySystemBackground))
-                .cornerRadius(10)
+                .cornerRadius(15)
+                .padding(.horizontal)
                 
                 // Stats
                 VStack(spacing: 5) {

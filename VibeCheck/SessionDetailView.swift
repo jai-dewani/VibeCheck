@@ -7,6 +7,7 @@ import Accelerate
 struct ChartDataPoint: Identifiable {
     let id = UUID()
     let time: Double
+    let date: Date
     let magnitude: Double
     let x: Double
     let y: Double
@@ -25,7 +26,7 @@ class SessionDetailViewModel: ObservableObject {
     @Published var timeYellow: Double = 0.0
     @Published var timeRed: Double = 0.0
     
-    func loadData(fileURL: URL, sessionDuration: TimeInterval) {
+    func loadData(fileURL: URL, sessionDuration: TimeInterval, startTime: Date) {
         DispatchQueue.global(qos: .userInitiated).async {
             guard let content = try? String(contentsOf: fileURL) else {
                 DispatchQueue.main.async { self.isLoading = false }
@@ -78,7 +79,8 @@ class SessionDetailViewModel: ObservableObject {
                     bucketCount += 1
                     
                     if bucketCount >= downsampleFactor {
-                        downsampled.append(ChartDataPoint(time: currentBucketTime, magnitude: currentBucketMag, x: currentBucketX, y: currentBucketY, z: currentBucketZ))
+                        let pointDate = startTime.addingTimeInterval(currentBucketTime)
+                        downsampled.append(ChartDataPoint(time: currentBucketTime, date: pointDate, magnitude: currentBucketMag, x: currentBucketX, y: currentBucketY, z: currentBucketZ))
                         currentBucketMag = 0; currentBucketX = 0; currentBucketY = 0; currentBucketZ = 0; bucketCount = 0
                     }
                 }
@@ -108,7 +110,10 @@ struct SessionDetailView: View {
     let fileURL: URL
     
     @StateObject private var viewModel = SessionDetailViewModel()
-    @State private var selectedChartMode = "Magnitude"
+    @State private var selectedChartModes: Set<String> = ["Magnitude"]
+    @State private var xVisibleDomain: TimeInterval = 0
+    @State private var initialVisibleDomain: TimeInterval = 0
+    
     let chartModes = ["Magnitude", "X Axis", "Y Axis", "Z Axis"]
     
     var body: some View {
@@ -169,28 +174,92 @@ struct SessionDetailView: View {
                             Text("Timeline")
                                 .font(.headline)
                             Spacer()
-                            Picker("Axis", selection: $selectedChartMode) {
-                                ForEach(chartModes, id: \.self) {
-                                    Text($0)
+                            // Zoom hint
+                            Text("Pinch to zoom")
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                            Menu {
+                                ForEach(chartModes, id: \.self) { mode in
+                                    Button(action: {
+                                        if selectedChartModes.contains(mode) {
+                                            if selectedChartModes.count > 1 {
+                                                selectedChartModes.remove(mode)
+                                            }
+                                        } else {
+                                            selectedChartModes.insert(mode)
+                                        }
+                                    }) {
+                                        HStack {
+                                            Text(mode)
+                                            if selectedChartModes.contains(mode) {
+                                                Image(systemName: "checkmark")
+                                            }
+                                        }
+                                    }
+                                }
+                            } label: {
+                                HStack {
+                                    Text("Axes")
+                                    Image(systemName: "chevron.down")
                                 }
                             }
-                            .pickerStyle(MenuPickerStyle())
                         }
-                        
+
                         Chart(viewModel.chartData) { point in
-                            LineMark(
-                                x: .value("Time (s)", point.time),
-                                y: .value("G-Force", valueForMode(point))
-                            )
-                            .foregroundStyle(colorForMode())
-                            .interpolationMethod(.catmullRom)
+                            ForEach(Array(selectedChartModes), id: \.self) { mode in
+                                LineMark(
+                                    x: .value("Time", point.time),
+                                    y: .value("Value", valueForMode(point, mode: mode))
+                                )
+                                .foregroundStyle(by: .value("Axis", mode))
+                                .interpolationMethod(.catmullRom)
+                            }
                         }
+                        .chartForegroundStyleScale([
+                            "Magnitude": .orange,
+                            "X Axis": .red,
+                            "Y Axis": .green,
+                            "Z Axis": .blue
+                        ])
+                        // Pin the full data range so 0 is always the left edge
+                        .chartXScale(domain: 0...max(session.duration, 1.0))
+                        // MM:SS labels on x-axis
+                        .chartXAxis {
+                            AxisMarks(values: .automatic(desiredCount: 6)) { value in
+                                if let seconds = value.as(Double.self) {
+                                    let mins = Int(seconds) / 60
+                                    let secs = Int(seconds) % 60
+                                    AxisValueLabel {
+                                        Text(String(format: "%02d:%02d", mins, secs))
+                                            .font(.caption2)
+                                    }
+                                }
+                                AxisGridLine()
+                                AxisTick()
+                            }
+                        }
+                        .chartScrollableAxes(.horizontal)
+                        .chartXVisibleDomain(length: xVisibleDomain > 0 ? xVisibleDomain : max(session.duration, 1.0))
                         .frame(height: 250)
                     }
                     .padding()
                     .background(Color(.secondarySystemBackground))
                     .cornerRadius(15)
                     .padding(.horizontal)
+                    // Gesture on the whole card (not just chart frame) for a large hit area.
+                    // simultaneousGesture lets the outer ScrollView still scroll vertically.
+                    .simultaneousGesture(
+                        MagnificationGesture()
+                            .onChanged { value in
+                                let base = initialVisibleDomain > 0 ? initialVisibleDomain : max(session.duration, 1.0)
+                                let maxDomain = max(session.duration, 1.0)
+                                let newDomain = base / value.magnitude
+                                xVisibleDomain = max(5.0, min(maxDomain, newDomain))
+                            }
+                            .onEnded { _ in
+                                initialVisibleDomain = xVisibleDomain
+                            }
+                    )
                     
                     Spacer(minLength: 40)
                 }
@@ -199,25 +268,19 @@ struct SessionDetailView: View {
         .navigationTitle("Session Details")
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            viewModel.loadData(fileURL: fileURL, sessionDuration: session.duration)
+            let fullDomain = max(session.duration, 1.0)
+            xVisibleDomain = fullDomain
+            initialVisibleDomain = fullDomain
+            viewModel.loadData(fileURL: fileURL, sessionDuration: session.duration, startTime: session.startTime)
         }
     }
     
-    private func valueForMode(_ point: ChartDataPoint) -> Double {
-        switch selectedChartMode {
+    private func valueForMode(_ point: ChartDataPoint, mode: String) -> Double {
+        switch mode {
         case "X Axis": return point.x
         case "Y Axis": return point.y
         case "Z Axis": return point.z
         default: return point.magnitude
-        }
-    }
-    
-    private func colorForMode() -> Color {
-        switch selectedChartMode {
-        case "X Axis": return .red
-        case "Y Axis": return .green
-        case "Z Axis": return .blue
-        default: return .orange
         }
     }
     
