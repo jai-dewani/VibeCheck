@@ -49,8 +49,8 @@ class MotionManager: ObservableObject {
     }
     
     func startRecording() {
-        guard motionManager.isAccelerometerAvailable else {
-            print("Accelerometer not available")
+        guard motionManager.isDeviceMotionAvailable else {
+            print("Device motion not available")
             return
         }
         
@@ -67,7 +67,7 @@ class MotionManager: ObservableObject {
         fileURL = documentsURL.appendingPathComponent(fileName)
         
         do {
-            let header = "timestamp_ms,accel_x_g,accel_y_g,accel_z_g,magnitude_g\n"
+            let header = "timestamp_ms,user_accel_x_g,user_accel_y_g,user_accel_z_g,magnitude_g\n"
             try header.write(to: fileURL!, atomically: true, encoding: .utf8)
             fileHandle = try FileHandle(forWritingTo: fileURL!)
             try fileHandle?.seekToEnd()
@@ -76,7 +76,7 @@ class MotionManager: ObservableObject {
             return
         }
         
-        motionManager.accelerometerUpdateInterval = 1.0 / 100.0 // 100 Hz
+        motionManager.deviceMotionUpdateInterval = 1.0 / 100.0 // 100 Hz
         isRecording = true
         
         DispatchQueue.main.async {
@@ -87,12 +87,12 @@ class MotionManager: ObservableObject {
             }
         }
         
-        motionManager.startAccelerometerUpdates(to: queue) { [weak self] data, error in
+        motionManager.startDeviceMotionUpdates(to: queue) { [weak self] data, error in
             guard let data = data, let self = self else { return }
             
-            let x = data.acceleration.x
-            let y = data.acceleration.y
-            let z = data.acceleration.z
+            let x = data.userAcceleration.x
+            let y = data.userAcceleration.y
+            let z = data.userAcceleration.z
             let mag = sqrt(x*x + y*y + z*z)
             let timestampMs = (Date().timeIntervalSince(self.startTime!)) * 1000.0
             
@@ -114,7 +114,7 @@ class MotionManager: ObservableObject {
     }
     
     func stopRecording() {
-        motionManager.stopAccelerometerUpdates()
+        motionManager.stopDeviceMotionUpdates()
         timer?.invalidate()
         timer = nil
         isRecording = false
